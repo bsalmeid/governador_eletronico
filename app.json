@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Governador",
+    "slug": "governador-eletronico",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "android": {
+      "package": "com.bsalm.governador",
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": []
+  }
+}

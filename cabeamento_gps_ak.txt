@@ -1,0 +1,4 @@
+azul => 485+
+branco => 485-
+preto => GND
+marrom => Positivo 9-36V

@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "name": "ESP32 Arduino",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "${env:LOCALAPPDATA}/Arduino15/packages/esp32/hardware/esp32/2.0.17/cores/esp32",
+        "${env:LOCALAPPDATA}/Arduino15/packages/esp32/hardware/esp32/2.0.17/variants/esp32",
+        "${env:LOCALAPPDATA}/Arduino15/packages/esp32/hardware/esp32/2.0.17/libraries/**",
+        "${env:LOCALAPPDATA}/Arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/gcc8_4_0-esp-2021r2-patch5/xtensa-esp32-elf/include",
+        "${env:USERPROFILE}/Documents/Arduino/libraries/**",
+        "${env:LOCALAPPDATA}/Arduino15/libraries/**"
+      ],
+      "defines": [
+        "ARDUINO=10819",
+        "ESP32",
+        "ESP_PLATFORM",
+        "F_CPU=240000000L"
+      ],
+      "compilerPath": "${env:LOCALAPPDATA}/Arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/gcc8_4_0-esp-2021r2-patch5/bin/xtensa-esp32-elf-gcc.exe",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "gcc-x64"
+    }
+  ],
+  "version": 4
+}
