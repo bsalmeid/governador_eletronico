@@ -3,8 +3,29 @@ import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGovernador } from '../../hooks/useGovernador';
 import { Screen } from '../../../App';
+
+// ─── Paleta de alto contraste para uso em alta luminosidade ─────────────────
+const C = {
+  root:        '#f1f5f9',
+  card:        '#ffffff',
+  header:      '#1e40af',
+  border:      '#e2e8f0',
+  borderSep:   '#cbd5e1',
+  textPrimary: '#0f172a',
+  textLabel:   '#374151',
+  textMuted:   '#475569',
+  textWhite:   '#ffffff',
+  green:       '#15803d',
+  amber:       '#b45309',
+  red:         '#b91c1c',
+  blue:        '#1d4ed8',
+  grayBtn:     '#64748b',
+  inputBg:     '#ffffff',
+  barBg:       '#e2e8f0',
+};
 
 interface Props {
   navigate: (s: Screen) => void;
@@ -18,7 +39,7 @@ function Step1PPR({ onNext, sendCommand }: {
   onNext: () => void;
   sendCommand: (c: string) => Promise<void>;
 }) {
-  const [ppr, setPpr]           = useState('20');
+  const [ppr, setPpr]             = useState('20');
   const [detecting, setDetecting] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
@@ -69,7 +90,7 @@ function Step1PPR({ onNext, sendCommand }: {
         keyboardType="number-pad"
         maxLength={3}
         placeholder="1"
-        placeholderTextColor="#475569"
+        placeholderTextColor={C.textMuted}
       />
 
       <TouchableOpacity
@@ -130,7 +151,6 @@ function Step2PWMBase({ onNext, onBack, sendCommand, rpm, pwm }: {
         Toque em "Testar" para ver o efeito ao vivo.
       </Text>
 
-      {/* Valores ao vivo */}
       <View style={styles.liveRow}>
         <View style={styles.liveBox}>
           <Text style={styles.liveLabel}>RPM ATUAL</Text>
@@ -150,7 +170,7 @@ function Step2PWMBase({ onNext, onBack, sendCommand, rpm, pwm }: {
         keyboardType="number-pad"
         maxLength={5}
         placeholder="1000"
-        placeholderTextColor="#475569"
+        placeholderTextColor={C.textMuted}
       />
 
       <Text style={styles.fieldLabel}>PWM Base (0–255)</Text>
@@ -161,7 +181,7 @@ function Step2PWMBase({ onNext, onBack, sendCommand, rpm, pwm }: {
         keyboardType="number-pad"
         maxLength={3}
         placeholder="200"
-        placeholderTextColor="#475569"
+        placeholderTextColor={C.textMuted}
       />
 
       <TouchableOpacity style={styles.btnSecondary} onPress={preview}>
@@ -240,13 +260,13 @@ function Step3Validacao({ onBack, onFinish, sendCommand, data }: {
     onFinish();
   }, [sendCommand, onFinish]);
 
-  const devColor = avgDev === null ? '#94a3b8'
-    : Math.abs(avgDev) <= 5  ? '#22c55e'
-    : Math.abs(avgDev) <= 15 ? '#f59e0b'
-    : '#ef4444';
+  const devColor = avgDev === null ? C.textMuted
+    : Math.abs(avgDev) <= 5  ? C.green
+    : Math.abs(avgDev) <= 15 ? C.amber
+    : C.red;
 
-  const errColor = Math.abs(data.err) <= 20 ? '#22c55e'
-    : Math.abs(data.err) <= 100 ? '#f59e0b' : '#ef4444';
+  const errColor = Math.abs(data.err) <= 20 ? C.green
+    : Math.abs(data.err) <= 100 ? C.amber : C.red;
 
   return (
     <View style={styles.stepInner}>
@@ -256,7 +276,6 @@ function Step3Validacao({ onBack, onFinish, sendCommand, data }: {
         médio. Objetivo: desvio {'<'} 5% e erro ao vivo próximo de zero.
       </Text>
 
-      {/* Valores ao vivo */}
       <View style={styles.liveRow}>
         <View style={styles.liveBox}>
           <Text style={styles.liveLabel}>RPM ATUAL</Text>
@@ -276,7 +295,6 @@ function Step3Validacao({ onBack, onFinish, sendCommand, data }: {
         </View>
       </View>
 
-      {/* Campos PID */}
       <Text style={styles.fieldLabel}>Kp — Proporcional (reação imediata)</Text>
       <TextInput
         style={styles.input}
@@ -285,7 +303,7 @@ function Step3Validacao({ onBack, onFinish, sendCommand, data }: {
         keyboardType="decimal-pad"
         maxLength={7}
         placeholder="0.050"
-        placeholderTextColor="#475569"
+        placeholderTextColor={C.textMuted}
       />
 
       <Text style={styles.fieldLabel}>Ki — Integral (zera erro em regime permanente)</Text>
@@ -296,7 +314,7 @@ function Step3Validacao({ onBack, onFinish, sendCommand, data }: {
         keyboardType="decimal-pad"
         maxLength={7}
         placeholder="0.010"
-        placeholderTextColor="#475569"
+        placeholderTextColor={C.textMuted}
       />
 
       <Text style={styles.fieldLabel}>Kd — Derivativo (amorte oscilações)</Text>
@@ -307,14 +325,13 @@ function Step3Validacao({ onBack, onFinish, sendCommand, data }: {
         keyboardType="decimal-pad"
         maxLength={7}
         placeholder="0.002"
-        placeholderTextColor="#475569"
+        placeholderTextColor={C.textMuted}
       />
 
       <TouchableOpacity style={styles.btnSecondary} onPress={applyGains}>
         <Text style={styles.btnText}>Aplicar Kp / Ki / Kd no ESP32</Text>
       </TouchableOpacity>
 
-      {/* Barra de progresso */}
       {running && (
         <View style={styles.progressBg}>
           <View style={[styles.progressFill, { width: `${(progress / 20) * 100}%` }]} />
@@ -356,8 +373,9 @@ function Step3Validacao({ onBack, onFinish, sendCommand, data }: {
 // ─── Tela principal ───────────────────────────────────────────────────────────
 
 export default function CalibrScreen({ navigate }: Props) {
-  const [step, setStep]            = useState<Step>(1);
-  const { data, sendCommand, connected } = useGovernador();
+  const [step, setStep]                      = useState<Step>(1);
+  const { data, sendCommand, connected }     = useGovernador();
+  const insets                               = useSafeAreaInsets();
 
   if (!connected) {
     return (
@@ -394,7 +412,7 @@ export default function CalibrScreen({ navigate }: Props) {
 
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom + 20, 40) }]}
       >
         {step === 1 && (
           <Step1PPR
@@ -425,7 +443,7 @@ export default function CalibrScreen({ navigate }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
+  root: { flex: 1, backgroundColor: C.root },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -433,77 +451,91 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 48,
     paddingBottom: 14,
-    backgroundColor: '#1e293b',
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    backgroundColor: C.header,
   },
   headerTitle: {
     flex: 1,
-    color: '#f1f5f9',
+    color: C.textWhite,
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 1,
   },
-  btnBack: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#334155', borderRadius: 8 },
-  btnBackText: { color: '#e2e8f0', fontSize: 13 },
+  btnBack: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  btnBackText: { color: C.textWhite, fontSize: 13, fontWeight: '600' },
   stepDots: { flexDirection: 'row', gap: 8 },
   dot: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#334155',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  dotActive: { backgroundColor: '#1d4ed8' },
-  dotText: { color: '#f1f5f9', fontSize: 13, fontWeight: '700' },
-  scroll: { padding: 20, paddingBottom: 40, gap: 0 },
+  dotActive: { backgroundColor: C.textWhite },
+  dotText: { color: C.header, fontSize: 13, fontWeight: '800' },
+  scroll: { padding: 20, gap: 0 },
   stepInner: { gap: 14 },
-  stepTitle: { color: '#f1f5f9', fontSize: 17, fontWeight: '700', marginBottom: 2 },
-  stepDesc: { color: '#94a3b8', fontSize: 13, lineHeight: 20 },
-  fieldLabel: { color: '#64748b', fontSize: 11, letterSpacing: 1, fontWeight: '600', marginTop: 4 },
+  stepTitle: { color: C.textPrimary, fontSize: 17, fontWeight: '700', marginBottom: 2 },
+  stepDesc: { color: C.textMuted, fontSize: 13, lineHeight: 20 },
+  fieldLabel: {
+    color: C.textLabel,
+    fontSize: 11,
+    letterSpacing: 1,
+    fontWeight: '700',
+    marginTop: 4,
+  },
   input: {
-    backgroundColor: '#1e293b',
+    backgroundColor: C.inputBg,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
-    color: '#f1f5f9',
+    borderWidth: 1.5,
+    borderColor: C.borderSep,
+    color: C.textPrimary,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 18,
+    fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
   liveRow: { flexDirection: 'row', gap: 10 },
   liveBox: {
     flex: 1,
-    backgroundColor: '#1e293b',
+    backgroundColor: C.card,
     borderRadius: 10,
     padding: 14,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  liveLabel: { color: '#64748b', fontSize: 10, letterSpacing: 1, marginBottom: 4 },
-  liveValue: { color: '#22c55e', fontSize: 30, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  liveLabel: { color: C.textLabel, fontSize: 10, letterSpacing: 1, fontWeight: '600', marginBottom: 4 },
+  liveValue: { color: C.green, fontSize: 28, fontWeight: '700', fontVariant: ['tabular-nums'] },
   progressBg: {
     height: 8,
-    backgroundColor: '#1e293b',
+    backgroundColor: C.barBg,
     borderRadius: 4,
     overflow: 'hidden',
   },
-  progressFill: { height: 8, backgroundColor: '#3b82f6', borderRadius: 4 },
+  progressFill: { height: 8, backgroundColor: C.blue, borderRadius: 4 },
   btnPrimary: {
-    backgroundColor: '#1d4ed8',
+    backgroundColor: C.blue,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
   btnSecondary: {
-    backgroundColor: '#334155',
+    backgroundColor: C.grayBtn,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
   btnDisabled: { opacity: 0.45 },
-  btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  btnText: { color: C.textWhite, fontSize: 14, fontWeight: '700' },
   navRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  devHint: { fontSize: 13, textAlign: 'center', fontWeight: '500' },
+  devHint: { fontSize: 13, textAlign: 'center', fontWeight: '600' },
 });

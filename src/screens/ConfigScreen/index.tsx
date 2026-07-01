@@ -1,13 +1,30 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, TextInput, ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BluetoothDevice } from 'react-native-bluetooth-classic';
 import bluetoothService from '../../services/bluetooth.service';
 import { useDevices } from '../../hooks/useDevices';
 import { useGovernador } from '../../hooks/useGovernador';
 import { Screen } from '../../../App';
+
+// ─── Paleta de alto contraste para uso em alta luminosidade ─────────────────
+const C = {
+  root:        '#f1f5f9',
+  card:        '#ffffff',
+  header:      '#1e40af',
+  border:      '#e2e8f0',
+  textPrimary: '#0f172a',
+  textLabel:   '#374151',
+  textMuted:   '#475569',
+  textWhite:   '#ffffff',
+  green:       '#15803d',
+  red:         '#b91c1c',
+  blue:        '#1d4ed8',
+  grayMid:     '#64748b',
+};
 
 interface Props {
   navigate: (s: Screen) => void;
@@ -18,8 +35,11 @@ export default function ConfigScreen({ navigate }: Props) {
   const [scanning, setScanning]     = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
 
+  const [rpmMin, setRpmMin] = useState('');
+
   const { savedDevice, saveDevice, clearDevice } = useDevices();
-  const { connected, connect, disconnect }        = useGovernador();
+  const { data, connected, connect, disconnect, sendCommand } = useGovernador();
+  const insets = useSafeAreaInsets();
 
   const scan = useCallback(async () => {
     setScanning(true);
@@ -52,8 +72,27 @@ export default function ConfigScreen({ navigate }: Props) {
     await clearDevice();
   }, [disconnect, clearDevice]);
 
+  useEffect(() => {
+    if (data.rpmMin !== undefined && rpmMin === '') {
+      setRpmMin(String(data.rpmMin));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.rpmMin]);
+
+  const applyRpmMin = useCallback(async () => {
+    const val = parseInt(rpmMin, 10);
+    if (isNaN(val) || val < 100 || val > 5000) {
+      Alert.alert('Valor inválido', 'RPM mínimo deve ser entre 100 e 5000.');
+      return;
+    }
+    await sendCommand(`SET_RPM_MIN:${val}`);
+    await sendCommand('SAVE');
+    Alert.alert('Salvo', `RPM mínimo definido: ${val} RPM`);
+  }, [rpmMin, sendCommand]);
+
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingBottom: insets.bottom }]}>
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigate('monitor')} style={styles.btnBack}>
@@ -63,18 +102,22 @@ export default function ConfigScreen({ navigate }: Props) {
       </View>
 
       <View style={styles.body}>
-        {/* Device atual */}
+
+        {/* Device vinculado */}
         {savedDevice && (
-          <View style={styles.currentCard}>
-            <View style={styles.currentTop}>
-              <Text style={styles.currentLabel}>DISPOSITIVO VINCULADO</Text>
-              <View style={[styles.dot, { backgroundColor: connected ? '#22c55e' : '#94a3b8' }]} />
+          <View style={styles.card}>
+            <View style={styles.cardTop}>
+              <Text style={styles.cardLabel}>DISPOSITIVO VINCULADO</Text>
+              <View style={[
+                styles.dot,
+                { backgroundColor: connected ? C.green : C.grayMid },
+              ]} />
             </View>
-            <Text style={styles.currentName}>{savedDevice.name}</Text>
-            <Text style={styles.currentId}>{savedDevice.id}</Text>
-            <View style={styles.currentActions}>
-              <Text style={[styles.currentStatus, { color: connected ? '#22c55e' : '#94a3b8' }]}>
-                {connected ? 'Online' : 'Offline'}
+            <Text style={styles.deviceName}>{savedDevice.name}</Text>
+            <Text style={styles.deviceAddr}>{savedDevice.id}</Text>
+            <View style={styles.cardActions}>
+              <Text style={[styles.statusText, { color: connected ? C.green : C.grayMid }]}>
+                {connected ? '● Online' : '○ Offline'}
               </Text>
               {connected
                 ? <TouchableOpacity style={styles.btnDanger} onPress={handleDisconnect}>
@@ -94,12 +137,12 @@ export default function ConfigScreen({ navigate }: Props) {
         {/* Botão scan */}
         <TouchableOpacity style={styles.btnScan} onPress={scan} disabled={scanning}>
           {scanning
-            ? <ActivityIndicator color="#fff" />
+            ? <ActivityIndicator color={C.textWhite} />
             : <Text style={styles.btnScanText}>Buscar Dispositivos Pareados</Text>
           }
         </TouchableOpacity>
 
-        {/* Lista de devices encontrados */}
+        {/* Lista de devices */}
         {devices.length > 0 && (
           <FlatList
             data={devices}
@@ -108,11 +151,11 @@ export default function ConfigScreen({ navigate }: Props) {
             renderItem={({ item }) => (
               <View style={styles.deviceRow}>
                 <View style={styles.deviceInfo}>
-                  <Text style={styles.deviceName}>{item.name ?? 'Sem nome'}</Text>
-                  <Text style={styles.deviceAddr}>{item.address}</Text>
+                  <Text style={styles.deviceRowName}>{item.name ?? 'Sem nome'}</Text>
+                  <Text style={styles.deviceRowAddr}>{item.address}</Text>
                 </View>
                 {connecting === item.address
-                  ? <ActivityIndicator color="#3b82f6" />
+                  ? <ActivityIndicator color={C.blue} />
                   : <TouchableOpacity
                       style={styles.btnConnect}
                       onPress={() => handleConnect(item)}
@@ -130,13 +173,38 @@ export default function ConfigScreen({ navigate }: Props) {
             Pareie o ESP32 nas configurações de Bluetooth do Android e depois toque em "Buscar".
           </Text>
         )}
+
+        {/* Card: RPM mínimo de segurança */}
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>PROTEÇÃO — RPM MÍNIMO</Text>
+          <Text style={styles.hintCard}>
+            Abaixo deste valor por 2 s contínuos o atuador é desligado automaticamente.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={rpmMin}
+            onChangeText={setRpmMin}
+            keyboardType="number-pad"
+            maxLength={4}
+            placeholder="1000"
+            placeholderTextColor={C.textMuted}
+          />
+          <TouchableOpacity
+            style={[styles.btnPrimary, !connected && { opacity: 0.4 }]}
+            onPress={applyRpmMin}
+            disabled={!connected}
+          >
+            <Text style={styles.btnText}>Aplicar e Salvar na EEPROM</Text>
+          </TouchableOpacity>
+        </View>
+
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
+  root: { flex: 1, backgroundColor: C.root },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -144,86 +212,112 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 48,
     paddingBottom: 14,
-    backgroundColor: '#1e293b',
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    backgroundColor: C.header,
   },
-  title: { color: '#f1f5f9', fontSize: 14, fontWeight: '700', letterSpacing: 1 },
+  title: { color: C.textWhite, fontSize: 14, fontWeight: '700', letterSpacing: 1 },
   btnBack: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: '#334155',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
-  btnBackText: { color: '#e2e8f0', fontSize: 13 },
+  btnBackText: { color: C.textWhite, fontSize: 13, fontWeight: '600' },
   body: { flex: 1, padding: 16, gap: 14 },
-  currentCard: {
-    backgroundColor: '#1e293b',
+  card: {
+    backgroundColor: C.card,
     borderRadius: 12,
     padding: 16,
     gap: 6,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  currentTop: {
+  cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 2,
   },
-  currentLabel: { color: '#64748b', fontSize: 10, letterSpacing: 1.5, fontWeight: '600' },
-  currentName: { color: '#f1f5f9', fontSize: 18, fontWeight: '700' },
-  currentId: { color: '#64748b', fontSize: 11 },
-  currentActions: {
+  cardLabel: { color: C.textLabel, fontSize: 10, letterSpacing: 1.5, fontWeight: '700' },
+  dot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: C.border,
+  },
+  deviceName: { color: C.textPrimary, fontSize: 18, fontWeight: '700' },
+  deviceAddr: { color: C.textMuted, fontSize: 11 },
+  cardActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 8,
   },
-  currentStatus: { fontSize: 13, fontWeight: '500' },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  statusText: { fontSize: 13, fontWeight: '600' },
   btnScan: {
-    backgroundColor: '#1d4ed8',
+    backgroundColor: C.blue,
     borderRadius: 10,
     paddingVertical: 16,
     alignItems: 'center',
   },
-  btnScanText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  btnScanText: { color: C.textWhite, fontSize: 15, fontWeight: '700' },
   list: { flex: 1 },
   deviceRow: {
-    backgroundColor: '#1e293b',
+    backgroundColor: C.card,
     borderRadius: 10,
     padding: 14,
     marginBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
   },
   deviceInfo: { flex: 1 },
-  deviceName: { color: '#f1f5f9', fontSize: 15, fontWeight: '600' },
-  deviceAddr: { color: '#64748b', fontSize: 11, marginTop: 2 },
+  deviceRowName: { color: C.textPrimary, fontSize: 15, fontWeight: '600' },
+  deviceRowAddr: { color: C.textMuted, fontSize: 11, marginTop: 2 },
   btnConnect: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: C.blue,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
   btnPrimary: {
-    backgroundColor: '#1d4ed8',
+    backgroundColor: C.green,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
   btnDanger: {
-    backgroundColor: '#b91c1c',
+    backgroundColor: C.red,
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  btnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  btnText: { color: C.textWhite, fontSize: 13, fontWeight: '700' },
   hint: {
-    color: '#475569',
+    color: C.textMuted,
     fontSize: 13,
     textAlign: 'center',
     marginTop: 24,
     lineHeight: 20,
+  },
+  hintCard: {
+    color: C.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  input: {
+    backgroundColor: C.card,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    color: C.textPrimary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 20,
+    fontWeight: '600',
   },
 });

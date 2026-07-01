@@ -1,7 +1,11 @@
 import RNBluetoothClassic, {
   BluetoothDevice,
 } from 'react-native-bluetooth-classic';
-import { Platform, PermissionsAndroid } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import {
+  check, checkMultiple, request, requestMultiple, openSettings,
+  PERMISSIONS, RESULTS,
+} from 'react-native-permissions';
 import { GovernadorData } from '../types/governador.types';
 
 type DataCallback    = (data: GovernadorData) => void;
@@ -99,45 +103,48 @@ function scheduleReconnect() {
   }, 2000);
 }
 
-// Solicita uma permissão por vez com timeout de 8s (evita trava no Android 16)
-async function requestPermWithTimeout(perm: string): Promise<string> {
-  return Promise.race([
-    PermissionsAndroid.request(perm as any),
-    new Promise<string>(resolve => setTimeout(() => resolve('timeout'), 8000)),
-  ]);
-}
-
 async function hasBtPermissions(): Promise<boolean> {
-  if (Platform.OS !== 'android' || Platform.Version < 31) return true;
-  const [connect, scan] = await Promise.all([
-    PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT),
-    PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN),
+  if (Platform.OS !== 'android') return true;
+  if ((Platform.Version as number) < 31) {
+    const r = await check(PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION);
+    return r === RESULTS.GRANTED;
+  }
+  const results = await checkMultiple([
+    PERMISSIONS.ANDROID.BLUETOOTH_CONNECT,
+    PERMISSIONS.ANDROID.BLUETOOTH_SCAN,
   ]);
-  console.log('[BT] check CONNECT=' + connect + ' SCAN=' + scan);
-  return connect && scan;
+  const vals = Object.values(results);
+  console.log('[BT] check CONNECT=' + results[PERMISSIONS.ANDROID.BLUETOOTH_CONNECT]
+    + ' SCAN=' + results[PERMISSIONS.ANDROID.BLUETOOTH_SCAN]);
+  return vals.every(r => r === RESULTS.GRANTED);
 }
 
 async function requestBtPermissions(): Promise<boolean> {
-  if (Platform.OS !== 'android' || Platform.Version < 31) return true;
-
-  // Solicita uma de cada vez com timeout para não travar no Android 16
-  const connectResult = await requestPermWithTimeout(
-    PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT
-  );
-  console.log('[BT] BLUETOOTH_CONNECT result =', connectResult);
-
-  const scanResult = await requestPermWithTimeout(
-    PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN
-  );
-  console.log('[BT] BLUETOOTH_SCAN result =', scanResult);
-
-  const ok = connectResult === PermissionsAndroid.RESULTS.GRANTED &&
-             scanResult    === PermissionsAndroid.RESULTS.GRANTED;
-
-  if (!ok) {
-    console.warn('[BT] Permissões não concedidas — verifique se o APK foi reconstruído com expo run:android');
+  if (Platform.OS !== 'android') return true;
+  if ((Platform.Version as number) < 31) {
+    const r = await request(PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION);
+    return r === RESULTS.GRANTED;
   }
-  return ok;
+  const results = await requestMultiple([
+    PERMISSIONS.ANDROID.BLUETOOTH_CONNECT,
+    PERMISSIONS.ANDROID.BLUETOOTH_SCAN,
+  ]);
+  const vals = Object.values(results);
+  console.log('[BT] request CONNECT=' + results[PERMISSIONS.ANDROID.BLUETOOTH_CONNECT]
+    + ' SCAN=' + results[PERMISSIONS.ANDROID.BLUETOOTH_SCAN]);
+
+  if (vals.some(r => r === RESULTS.BLOCKED)) {
+    Alert.alert(
+      'Bluetooth bloqueado',
+      'A permissão foi negada permanentemente. Habilite nas configurações do aplicativo.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Abrir Configurações', onPress: () => openSettings().catch(() => {}) },
+      ]
+    );
+    return false;
+  }
+  return vals.every(r => r === RESULTS.GRANTED);
 }
 
 // ─── API pública ─────────────────────────────────────────────────────────────
@@ -210,6 +217,19 @@ const bluetoothService = {
       reconnectTimer = null;
     }
     unsubscribeEvents();
+
+    // Garante permissão antes de tentar conectar (Android 12+)
+    const already = await hasBtPermissions();
+    if (!already) {
+      const granted = await requestBtPermissions();
+      if (!granted) {
+        const msg = 'Permissão Bluetooth negada. Habilite nas configurações do app.';
+        onError?.(msg);
+        onStatus?.(false);
+        throw new Error(msg);
+      }
+    }
+
     try {
       const dev = await RNBluetoothClassic.connectToDevice(address);
       device            = dev;

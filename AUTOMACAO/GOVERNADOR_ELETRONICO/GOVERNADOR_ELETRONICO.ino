@@ -139,6 +139,10 @@ static float pidIntegral  = 0.0f;
 static float pidRpmPrev   = 0.0f;  // derivativo sobre RPM (evita "derivative kick")
 static bool  pidPrimeiroLoop = true;
 
+// Estado de proteção (stall detection)
+static unsigned long rpmAbaixoMinSince = 0; // millis() em que RPM caiu abaixo do mínimo; 0 = OK
+static bool          modoFalha         = false;
+
 // Timers
 unsigned long ultimoRPM     = 0;
 unsigned long ultimoBT      = 0;
@@ -262,11 +266,17 @@ static void displayAtualizarRPM(float rpm, uint8_t duty, bool manual) {
   tft.fillRect(8,         108, barW,       12, TFT_BLUE);
   tft.fillRect(8 + barW, 108, 300 - barW, 12, TFT_NAVY);
 
-  // Modo
+  // Modo / Falha
   tft.setTextSize(2);
-  tft.setTextColor(manual ? TFT_ORANGE : TFT_CYAN, TFT_BLACK);
-  tft.setCursor(8, 130);
-  tft.print(manual ? "MODO: MANUAL" : "MODO: AUTO  ");
+  if (modoFalha) {
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.setCursor(8, 130);
+    tft.print("!! FALHA RPM !!");
+  } else {
+    tft.setTextColor(manual ? TFT_ORANGE : TFT_CYAN, TFT_BLACK);
+    tft.setCursor(8, 130);
+    tft.print(manual ? "MODO: MANUAL" : "MODO: AUTO  ");
+  }
 }
 
 static void displayAtualizarInfo() {
@@ -358,6 +368,20 @@ static void processarComando(const String& linha) {
     salvarConfig();
     SerialBT.println("OK:SAVE");
   }
+  else if (linha.startsWith("SET_RPM_MIN:")) {
+    int val = linha.substring(12).toInt();
+    if (val >= 100 && val <= 5000) {
+      cfg.rpmMinSeguranca = (uint16_t)val;
+      if (rpmAtual >= (float)cfg.rpmMinSeguranca) {
+        modoFalha         = false;
+        rpmAbaixoMinSince = 0;
+        pidPrimeiroLoop   = true;
+      }
+      SerialBT.println("OK:SET_RPM_MIN");
+    } else {
+      SerialBT.println("ERR:SET_RPM_MIN:FORA_DO_RANGE");
+    }
+  }
   else {
     SerialBT.print("ERR:CMD_DESCONHECIDO:");
     SerialBT.println(linha);
@@ -367,11 +391,12 @@ static void processarComando(const String& linha) {
 // ─── Telemetria JSON ─────────────────────────────────────────────────────────
 
 static void enviarStatus(float rpm, uint8_t duty) {
-  char json[192];
+  char json[220];
   float erro = rpm - (float)cfg.setpointRPM;
   snprintf(json, sizeof(json),
     "{\"rpm\":%.1f,\"sp\":%d,\"pwm\":%d,\"mode\":\"%s\","
-    "\"pot\":%d,\"ppr\":%d,\"kp\":%.4f,\"ki\":%.4f,\"kd\":%.4f,\"err\":%.1f}\n",
+    "\"pot\":%d,\"ppr\":%d,\"kp\":%.4f,\"ki\":%.4f,\"kd\":%.4f,"
+    "\"err\":%.1f,\"fault\":%d,\"rpmMin\":%d}\n",
     rpm,
     cfg.setpointRPM,
     duty,
@@ -379,7 +404,9 @@ static void enviarStatus(float rpm, uint8_t duty) {
     analogRead(POT_PIN),
     cfg.ppr,
     cfg.Kp, cfg.Ki, cfg.Kd,
-    erro
+    erro,
+    modoFalha ? 1 : 0,
+    cfg.rpmMinSeguranca
   );
   SerialBT.print(json);
 }
@@ -464,6 +491,29 @@ void loop() {
 
     rpmAtual = medirRPM(intervalo);
 
+    // ── Proteção: stall / falha de sensor (apenas AUTO, não em CALIB) ────────
+    if (!modoManual && !modoCalib) {
+      if (rpmAtual < (float)cfg.rpmMinSeguranca) {
+        if (rpmAbaixoMinSince == 0) rpmAbaixoMinSince = agora;
+        if (!modoFalha && (agora - rpmAbaixoMinSince) >= RPM_MIN_TIMEOUT_MS) {
+          modoFalha       = true;
+          pidPrimeiroLoop = true; // garante pidReset bumpless na recuperação
+          ledcWrite(PWM_CHANNEL, 0);
+          Serial.println("[GOV] FALHA: RPM abaixo do minimo — PWM zerado.");
+        }
+      } else {
+        if (modoFalha) {
+          modoFalha       = false;
+          pidPrimeiroLoop = true; // reinicia PID bumpless a partir de PWM=0
+          Serial.println("[GOV] FALHA: RPM recuperado — retomando controle.");
+        }
+        rpmAbaixoMinSince = 0;
+      }
+    } else {
+      rpmAbaixoMinSince = 0;
+      if (modoManual) modoFalha = false;
+    }
+
     if (modoManual) {
       // MANUAL: potenciômetro → PWM direto
       int   raw  = analogRead(POT_PIN);
@@ -476,17 +526,22 @@ void loop() {
       pidRpmPrev = rpmAtual;
 
     } else {
-      // Transição MANUAL → AUTO: inicializa integral sem bump
-      if (modoManualAnterior || pidPrimeiroLoop) {
-        pidReset(rpmAtual, (float)dutyAtual);
-      }
+      if (modoFalha) {
+        dutyAtual = 0;
+        // PWM já zerado no trigger; manter aqui apenas para display/BT
+      } else {
+        // Transição MANUAL → AUTO: inicializa integral sem bump
+        if (modoManualAnterior || pidPrimeiroLoop) {
+          pidReset(rpmAtual, (float)dutyAtual);
+        }
 
-      if (!modoCalib) {
-        // AUTO: PID completo
-        dutyAtual = calcularDutyPID(rpmAtual, dtSec);
-        ledcWrite(PWM_CHANNEL, dutyAtual);
+        if (!modoCalib) {
+          // AUTO: PID completo
+          dutyAtual = calcularDutyPID(rpmAtual, dtSec);
+          ledcWrite(PWM_CHANNEL, dutyAtual);
+        }
+        // CALIB: PWM congelado
       }
-      // CALIB: PWM congelado
     }
   }
 

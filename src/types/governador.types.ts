@@ -9,6 +9,8 @@ export interface GovernadorData {
   ki: number;       // ganho integral
   kd: number;       // ganho derivativo
   err: number;      // erro atual (rpm - setpoint)
+  fault?: number;   // 1 = falha ativa (RPM abaixo do mínimo), 0 ou ausente = normal
+  rpmMin?: number;  // valor atual de cfg.rpmMinSeguranca (para popular UI de config)
 }
 
 export interface DeviceInfo {

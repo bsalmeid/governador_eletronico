@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import {
+  requestMultiple, request, openSettings,
+  PERMISSIONS, RESULTS,
+} from 'react-native-permissions';
 import bluetoothService from '@/services/bluetooth.service';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -12,34 +16,34 @@ export type Screen = 'monitor' | 'config' | 'calibr';
 async function requestBluetoothPermissions() {
   if (Platform.OS !== 'android') return;
 
-  if (Platform.Version >= 31) {
-    // Android 12+
-    const result = await PermissionsAndroid.requestMultiple([
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+  if ((Platform.Version as number) >= 31) {
+    // Android 12+ — usa react-native-permissions (funciona no Android 16)
+    const results = await requestMultiple([
+      PERMISSIONS.ANDROID.BLUETOOTH_CONNECT,
+      PERMISSIONS.ANDROID.BLUETOOTH_SCAN,
     ]);
-    console.log('[BT Perms Android 12+]', JSON.stringify(result));
-    const denied = Object.entries(result).filter(
-      ([, v]) => v !== PermissionsAndroid.RESULTS.GRANTED
-    );
-    if (denied.length > 0) {
+    console.log('[BT Perms]', JSON.stringify(results));
+
+    const vals = Object.values(results);
+    if (vals.some(r => r === RESULTS.BLOCKED)) {
+      Alert.alert(
+        'Bluetooth bloqueado',
+        'Habilite o Bluetooth nas configurações do aplicativo.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Abrir Configurações', onPress: () => openSettings().catch(() => {}) },
+        ]
+      );
+    } else if (!vals.every(r => r === RESULTS.GRANTED)) {
       Alert.alert(
         'Permissão necessária',
-        'Acesse Configurações > Aplicativos > Governador > Permissões e habilite o Bluetooth.',
+        'Permita o acesso ao Bluetooth quando solicitado para conectar ao governador.',
       );
     }
   } else {
-    // Android 11 e anteriores
-    const result = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      {
-        title: 'Localização necessária para Bluetooth',
-        message: 'O Android requer permissão de localização para buscar dispositivos Bluetooth.',
-        buttonPositive: 'Permitir',
-        buttonNegative: 'Negar',
-      }
-    );
-    console.log('[BT Perms Android <12]', result);
+    // Android 11 e anteriores — Bluetooth clássico exige localização
+    const r = await request(PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION);
+    console.log('[BT Perms Android <12]', r);
   }
 }
 

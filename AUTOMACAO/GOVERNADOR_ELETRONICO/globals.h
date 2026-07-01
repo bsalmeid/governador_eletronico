@@ -50,20 +50,25 @@ static const int EEPROM_SIZE  = 64;
 static const int EEPROM_MAGIC = 0;   // byte de validade (valor esperado: 0xA5)
 static const int EEPROM_CFG   = 1;   // início da struct Config
 
-static const uint8_t EEPROM_MAGIC_VAL = 0xA7; // incrementar sempre que Config mudar de tamanho
+static const uint8_t EEPROM_MAGIC_VAL = 0xA8; // incrementar sempre que Config mudar de tamanho
+
+// ─── Temporização de proteção ────────────────────────────────────────────────
+
+static const uint32_t RPM_MIN_TIMEOUT_MS = 2000; // ms abaixo do mínimo antes de acionar falha
 
 // ─── Struct de configuração persistível ─────────────────────────────────────
 
 struct Config {
-  uint8_t  ppr;          // pulsos por revolução do sensor Hall (padrão: 1)
-  uint16_t setpointRPM;  // RPM alvo no modo AUTO (padrão: 1000)
-  uint8_t  basePWM;      // duty cycle em RPM nominal (padrão: 200) // CONFIRMAR no LOCAL... colocar o trator a 1.000 RPM e medir o duty cycle do PWM, colocar esse valor aqui // MEDIR VOLTAGEM da Valcula Atual
-  float    Kp;           // ganho proporcional  — reage ao erro atual
-  float    Ki;           // ganho integral      — elimina erro em regime permanente
-  float    Kd;           // ganho derivativo    — amorte oscilações em mudanças bruscas
-  uint8_t  minPWM;       // duty mínimo em modo AUTO (padrão: 50)
-  uint8_t  maxPWM;       // duty máximo (padrão: 255)
-  char     btName[24];   // nome Bluetooth (padrão: "ESP32_GOVERNADOR")
+  uint8_t  ppr;             // pulsos por revolução do sensor Hall (padrão: 1)
+  uint16_t setpointRPM;     // RPM alvo no modo AUTO (padrão: 1000)
+  uint8_t  basePWM;         // duty cycle em RPM nominal (padrão: 200) // CONFIRMAR no LOCAL... colocar o trator a 1.000 RPM e medir o duty cycle do PWM, colocar esse valor aqui // MEDIR VOLTAGEM da Valcula Atual
+  float    Kp;              // ganho proporcional  — reage ao erro atual
+  float    Ki;              // ganho integral      — elimina erro em regime permanente
+  float    Kd;              // ganho derivativo    — amorte oscilações em mudanças bruscas
+  uint8_t  minPWM;          // duty mínimo em modo AUTO (padrão: 50)
+  uint8_t  maxPWM;          // duty máximo (padrão: 255)
+  char     btName[24];      // nome Bluetooth (padrão: "ESP32_GOVERNADOR")
+  uint16_t rpmMinSeguranca; // RPM mínimo de segurança — abaixo por RPM_MIN_TIMEOUT_MS zera PWM
 };
 
 // Defaults para roda fônica de 20 dentes, eixo ~1850 RPM.
@@ -72,15 +77,16 @@ struct Config {
 // Kp/Ki/Kd conservadores — ajustar via app após validação em bancada.
 // Inicialização posicional (C++11 compatível com toolchain Arduino).
 static const Config CFG_DEFAULT = {
-  20,              // ppr
-  1850,            // setpointRPM
-  200,             // basePWM
-  0.05f,           // Kp
-  0.01f,           // Ki
-  0.002f,          // Kd
-  50,              // minPWM
-  255,             // maxPWM
-  "ESP32_GOVERNADOR" // btName
+  20,                  // ppr
+  1850,                // setpointRPM
+  200,                 // basePWM
+  0.05f,               // Kp
+  0.01f,               // Ki
+  0.002f,              // Kd
+  50,                  // minPWM
+  255,                 // maxPWM
+  "ESP32_GOVERNADOR",  // btName
+  1000                 // rpmMinSeguranca
 };
 
 // ─── Declarações externas (definidas no .ino) ────────────────────────────────
